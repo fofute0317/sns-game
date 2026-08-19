@@ -8,29 +8,32 @@
 
 - ログイン不要・氏名登録不要・個人情報の収集なし・広告なし
 - 学校の端末のブラウザ（Chrome / Edge / Safari）だけで動作。インストール不要
-- **外部パッケージゼロ**。`npm install` は不要で、Node.js があれば動きます
+- **Vercel + Supabase** で動作。サーバの常駐運用もインフラの管理も不要です
 
 ---
 
 ## 1. 起動する
 
 ```bash
-node server/index.js
+npm install
+cp .env.example .env.local   # Supabase の URL とキーを書き込む
+npm run dev
 ```
 
-これだけです。起動すると、アクセス先のURLが表示されます。
+| 画面 | URL |
+| --- | --- |
+| トップページ | <http://localhost:3000/> |
+| 先生用コンソール | <http://localhost:3000/teacher> |
+| 生徒用 | <http://localhost:3000/play> |
 
-```
-  🍫  フェアトレード・チャレンジ ～チョコレートの旅～
-  ───────────────────────────────────────────────
-  先生用   : http://localhost:3000/teacher.html
-  生徒用   : http://localhost:3000/play.html
+同じWi-Fi内のタブレットからも試すときは `npm run dev -- -H 0.0.0.0` で起動し、
+PC の IP アドレスで `http://192.168.x.x:3000/play` を開きます。
 
-  同じWi-Fiの端末からは、こちらのURLで開けます:
-    http://192.168.1.24:3000/play.html
-```
+> 📄 **Supabase の作り方から Vercel への公開までは [DEPLOY.md](DEPLOY.md) にまとめています。**
+> はじめての方でも15〜20分で公開できます。
 
-ポートを変えたいときは `PORT=8080 node server/index.js`。
+> 📄 **自前サーバ版からの移行内容は [MIGRATION.md](MIGRATION.md) にまとめています。**
+> 何をどう置き換えたか、なぜそうしたかを記録しています。
 
 ### ゲーム内のお金について
 
@@ -65,10 +68,10 @@ node server/index.js
                     └───┬─────────┬───┘
               生徒      │         │      先生
                         ▼         ▼
-                 /play.html  ◀────────▶  /teacher.html     ← 互いに行き来できます
+                 /play       ◀────────▶  /teacher          ← 互いに行き来できます
 ```
 
-> **必要なもの**: Node.js 20 以上（開発・動作確認は Node.js 24 で実施）
+> **必要なもの**: Node.js 20 以上（開発・動作確認は Node.js 24 で実施）と、Supabase の無料プロジェクト1つ
 
 ---
 
@@ -76,7 +79,7 @@ node server/index.js
 
 ### 先生
 
-1. `/teacher.html` を開いて **「ルームを作成する」** を押す
+1. `/teacher` を開いて **「ルームを作成する」** を押す
 2. 画面に出る **6けたの番号とQRコード** を、プロジェクタや黒板で生徒に見せる
 3. 全員が入ったら **「ゲームを開始する」**
 4. あとは **「次へ ▶」** を押していくだけ
@@ -86,7 +89,7 @@ node server/index.js
 
 ### 生徒
 
-1. QRコードを読む、または `/play.html` を開く
+1. QRコードを読む、または `/play` を開く
 2. 6けたの番号と名前（ニックネーム可）を入れる
 3. 毎年、5つのことを決める
    - カカオの仕入れ先（一般市場 / 直接取引 / 国際フェアトレード認証）
@@ -120,7 +123,8 @@ AIは3種類の考え方（利益重視 / バランス / フェアトレード�
 | 生徒が決めないまま時間になった | 先生が締め切ると、その時点の選択（未選択なら既定値）で計算されます |
 | 生徒が途中で離脱した | 残ったメンバーで続行できます。AIで人数を埋めることもできます |
 | 先生が誤ってページを閉じた | 「前回のルームに戻る」で復帰できます |
-| サーバが再起動した | ルームの状態はディスクに保存されており、復元されます |
+| サーバ側の入れ替えが起きた | ルームの状態は Postgres にあるため影響を受けません |
+| Realtime が学校のネットワークで遮断された | 4秒ごとの再取得に自動で切り替わり、授業は続行できます |
 | 定員を超えて参加しようとした | 人数の上限で断ります |
 | ブラウザから不正な値を送られた | サーバ側で必ず検証します（後述） |
 
@@ -163,7 +167,12 @@ node tools/simulate.js    # 2,000ゲーム対戦させ、支配的な戦略が�
 node tools/tune.js        # バランスの良い数値の組み合わせを自動で探す
 ```
 
-書式に誤りがあるときは**サーバが起動せず、理由を表示します**（授業中に気づく事態を防ぐため）。
+書式に誤りがあるときは **`npm test` と `npm run build` が失敗し、理由を表示します**
+（授業中に気づく事態を防ぐため。公開後も `/api/rulesets` に理由が出ます）。
+
+ルールセットを**新しく追加**したときは、`config/` に置いたうえで
+`lib/rules.ts` の `RAW_RULESETS` に1行足してください
+（Vercel ではファイル一覧を実行時に読めないため、ここだけ明示が必要です）。
 
 > 📄 **数値の根拠と、発注仕様からの変更点は [docs/BALANCE.md](docs/BALANCE.md) にまとめています。**
 
@@ -171,33 +180,34 @@ node tools/tune.js        # バランスの良い数値の組み合わせを自�
 
 ## 6. 公開する（学校から使えるようにする）
 
-### A. 教室のPC1台をサーバにする（最も手軽・推奨）
-
-先生のPCで `node server/index.js` を実行し、表示された
-`http://192.168.x.x:3000/play.html` を生徒に開いてもらいます。
-インターネットに出ないので、学校のフィルタリングの影響を受けにくい方法です。
-
-- 同じWi-Fi（同じセグメント）に全端末がいること
-- Windows のファイアウォールで、初回に「アクセスを許可」を選ぶこと
-
-### B. クラウドに置く（複数校・自宅からも使う場合）
-
-`PORT` 環境変数を読むだけの構成なので、Node.js が動く PaaS ならそのまま動きます。
+**Vercel（画面とAPI）+ Supabase（データベースとリアルタイム通信）** で公開します。
+どちらも無料プランの範囲で、1校ぶんの授業には十分です。
 
 ```
-起動コマンド : node server/index.js
-Node バージョン: 20 以上
-ビルド      : 不要（依存パッケージなし）
+   ブラウザ                 Vercel                    Supabase
+   ────────                 ──────                    ────────
+   /teacher  ──── POST ────▶ /api/rooms/create ─────▶ rooms（状態を保存）
+   /play     ──── POST ────▶ /api/rooms/join          │
+                                                      ▼
+             ◀── broadcast ─────────────────── Realtime「変わったよ」
+             ──── GET ─────▶ /api/rooms/state ─────▶ rooms（自分用の状態を取得）
 ```
 
-**WebSocket に対応したサービスを選んでください**（Render / Railway / Fly.io / VPS など。
-WebSocket を通さないサーバレス環境では動きません）。
+手順は [DEPLOY.md](DEPLOY.md) を参照してください。おおまかには次の3ステップです。
 
-HTTPS のサイトでは、クライアントは自動的に `wss://` で接続します。設定は不要です。
+1. Supabase でプロジェクトを作り、`supabase/schema.sql` を実行する
+2. Vercel にリポジトリをインポートし、環境変数を3つ登録する
+3. Deploy を押す
 
-> ルームの状態は `data/rooms.json` に保存されます。ファイルを保持できない環境でも
-> 動作しますが、再起動時に進行中のゲームは復元されません。
-> `NO_PERSIST=1` で保存を無効にできます。
+```bash
+npm run build   # 本番ビルド（型チェックも走ります）
+npm run start   # 本番モードで確認
+```
+
+> **WebSocket サーバは不要になりました。**
+> リアルタイム更新は Supabase Realtime の broadcast が担当します。
+> 学校のネットワークが WebSocket を遮断していても、
+> 4秒ごとの再取得に自動で切り替わるため授業は成立します。
 
 ---
 
@@ -209,30 +219,50 @@ config/           ルール（数値・文章）… ここを変えればゲー�
   rules.elementary.json   小学校版（extends で差分のみ）
   rules.spec.json         発注仕様どおり（比較用）
   companies.json          会社名・色
-  news.json               トップページの「お知らせ」（ここを直せば表示が変わります）
+  news.json               トップページの「お知らせ」
 
-shared/           サーバとブラウザの両方から使う共通コード
-  engine.js               ゲームの計算（純粋関数のみ。通信もDOMも知らない）
-  rng.js                  シード固定の乱数
+lib/              ゲームの中身とサーバ側の処理（TypeScript）
+  engine.ts               ゲームの計算（純粋関数のみ。通信もDOMも知らない）
+  rng.ts                  シード固定の乱数
+  scoring.ts              得点・ランキングの入口
+  game.ts                 1ゲーム分の状態遷移（純粋関数。旧 room.js）
+  rules.ts                ルールJSONの読み込み・継承・検証
+  bots.ts                 練習用AI
+  store.ts                Supabase への保存・読み出し（楽観ロック）
+  supabase.ts             DBクライアントと broadcast
+  realtime.ts             ブラウザ側の通信（旧 net.js の置き換え）
+  api.ts                  APIルート共通の小道具
+  types.ts                型定義
 
-server/
-  index.js                HTTP + WebSocket の入口
-  ws.js                   WebSocket の自前実装（RFC 6455）
-  room.js                 1ゲーム分の状態管理・進行
-  store.js                ルームの保管と保存・復元
-  rules.js                ルールJSONの読み込み・継承・検証
-  bots.js                 練習用AI
+app/              Next.js（画面とAPI）
+  page.tsx                トップページ
+  teacher/page.tsx        先生用コンソール
+  play/page.tsx           生徒用
+  j/[code]/route.ts       QR用の短縮URL（/j/123456 → /play?code=123456）
+  api/
+    rooms/create          ルーム作成（先生）
+    rooms/join            参加（生徒）
+    rooms/resume          再接続
+    rooms/state           自分用の状態を取得
+    rooms/exists          ルーム番号の確認
+    game/start            ゲーム開始
+    game/submit           決定の提出
+    game/update           進行・設定・退出などの操作
+    game/tick             制限時間の締め切り
+    rulesets / news / health / cron/sweep
 
-public/           ブラウザ側
-  index.html              トップページ（生徒用・先生用の入口をつなぐハブ。挿絵はインラインSVG）
-  play.html               生徒用
-  teacher.html            先生用コンソール
-  css/  home.css（トップ） app.css（ゲーム画面）
-  js/   home.js  net.js（再接続つき通信） ui.js components.js teacher.js play.js qr.js
+client/           ブラウザ側の画面ロジック（移行前からほぼ無変更）
+  markup/                 各ページのHTML（原文のまま）
+  VanillaPage.tsx         マークアップを置き、コントローラを起動するだけの土台
+  home.js  teacher.js  play.js
+  ui.js  components.js  icons.js  qr.js  art.js
 
+styles/           home.css（トップ） app.css（ゲーム画面）
+public/img/       背景イラスト
+supabase/         schema.sql（テーブル定義）
 test/             npm test で全部走ります
 tools/            simulate.js（バランス検証） tune.js（自動調整）
-docs/             BALANCE.md（数値の根拠） TEACHER-GUIDE.md（授業案）
+docs/             BALANCE.md（数値の根拠） PROTOCOL.md（通信仕様） TEACHER-GUIDE.md（授業案）
 ```
 
 ### 設計の考えかた
@@ -248,25 +278,29 @@ docs/             BALANCE.md（数値の根拠） TEACHER-GUIDE.md（授業案�
 ## 8. テスト
 
 ```bash
-npm test
+npm test        # 93個のテスト
+npm run build   # 本番ビルド（型チェックを含む）
 ```
 
-124個のテストが走ります（Node.js 標準のテストランナーのみ使用。外部ツール不要）。
+Node.js 標準のテストランナーだけを使います（ブラウザもテストフレームワークも不要）。
+テストの前に `lib/` と `client/` を `.test-build/` へコンパイルします
+（`scripts/build-tests.mjs`）。
 
 | ファイル | 確認していること |
 |---|---|
 | `test/engine.test.js` | 計算式、イベントの効果、順位付け、不正入力の扱い、決定性 |
-| `test/e2e.test.js` | **本物のサーバに4人が接続して5ラウンド対戦**、再接続、締め切り、権限、不正送信 |
-| `test/client-home.test.js` | トップページから生徒用・先生用の両方へ行けるか、遊び方とお知らせの表示 |
-| `test/client-play.test.js` | **生徒用画面（play.js）を本物のサーバ相手に最初から最後まで操作**。参加→5ラウンド→結果、通信断からの自動復帰 |
-| `test/client-teacher.test.js` | **先生用コンソール（teacher.js）を実際にクリック操作**。ルーム作成→AI追加→開始→締め切り→3段階の結果発表→CSV出力 |
-| `test/protocol.test.js` | WebSocketのハンドシェイクとフレーム処理、レート制限、ルール検証 |
+| `test/game.test.js` | **6人が参加 → 5ラウンド → 最終ランキング**までの通し、締め切り、再接続、AI、制限時間、他人の選択が見えないこと、DBへの保存と復元 |
 | `test/render.test.js` | 画面部品が、実際のゲーム結果から正しく組み立てられるか |
+| `test/markup.test.js` | 移行前のHTMLにあった id と構造がすべて残っているか |
 | `test/qr.test.js` | QRコードが規格どおりか（形式情報・型番情報を規格値と照合） |
 
-`test/dom-stub.js` に小さなDOM実装を用意し、**ブラウザを起動せずに実際の画面スクリプトを
-そのまま実行**しています（HTMLも本物を読み込みます）。見た目の確認まではできませんが、
-「生徒や先生が触ったときに動くか」はここで確認できます。
+`test/dom-stub.js` に小さなDOM実装を用意し、**ブラウザを起動せずに実際の画面部品を
+そのまま実行**しています。
+
+> 移行にともない、WebSocketサーバを起動して検証していたテスト
+> （`e2e` / `protocol` / `client-*`）は削除し、
+> 同じ検証項目を `test/game.test.js` と `test/markup.test.js` に引き継ぎました。
+> 詳しくは [MIGRATION.md](MIGRATION.md) の第6節を参照してください。
 
 ---
 
