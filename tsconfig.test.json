@@ -1,0 +1,28 @@
+{
+  "// なぜ別の tsconfig が要るか": [
+    "node --test は TypeScript をそのまま実行できません。",
+    "そこでテストの前に lib/ を CommonJS へコンパイルし、テストはその出力を読みます。",
+    "CommonJS にしているのは、拡張子なしの import（'./rng'）をそのまま解決させるためです。",
+    "本番のビルド（next build）はこの設定を使いません。"
+  ],
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "dom"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": false,
+    "declaration": false,
+    "sourceMap": false,
+    "outDir": ".test-build",
+    "rootDir": ".",
+    "allowJs": true,
+    "checkJs": false,
+    "paths": { "@/lib/*": ["./lib/*"], "@/*": ["./*"] },
+    "baseUrl": "."
+  },
+  "include": ["lib/**/*.ts", "client/*.js", "client/markup/*.ts", "config/*.json"]
+}

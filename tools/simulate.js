@@ -17,7 +17,7 @@
  * ①と②を混ぜて比べると、AIが有利なのは当然なので、判定は①で行います。
  */
 
-import { loadRuleset } from '../server/rules.js';
+import { loadRuleset } from '../.test-build/lib/rules.js';
 import { buildArchetypes, runSimulation, balanceScore } from './sim-core.js';
 
 function parseArgs(argv) {

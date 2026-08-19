@@ -11,11 +11,8 @@ import { installDom } from './dom-stub.js';
 
 installDom(); // components.js を読み込む前に必要
 
-const { loadRuleset } = await import('../server/rules.js');
-const { Room } = await import('../server/room.js');
-const companies = JSON.parse(
-  await import('node:fs').then((fs) => fs.readFileSync(new URL('../config/companies.json', import.meta.url), 'utf8'))
-);
+const { loadRuleset, companies } = await import('../.test-build/lib/rules.js');
+const game = await import('../.test-build/lib/game.js');
 const {
   eventCard,
   playerList,
@@ -28,16 +25,18 @@ const {
   marginSummary,
   decisionBadges,
   stat,
-} = await import('../public/js/components.js');
+} = await import('../.test-build/client/components.js');
 
 /* ------------------------------------------------ 本物の1ゲームを用意する */
 
 function playFullGame(ruleId = 'mvp') {
-  const rules = loadRuleset(ruleId);
-  const room = new Room({ code: '123456', rules, companies, seed: 'render-test' });
-  const names = ['あおい', 'はると', 'ゆい', 'そうた'];
-  const ids = names.map((n) => room.addPlayer({ name: n }).player.id);
-  room.start();
+  const baseRules = loadRuleset(ruleId);
+  const state = game.createRoomState({ code: '123456', rules: baseRules, seed: 'render-test' });
+  const rules = game.rulesFor(baseRules, state);
+
+  const names = ["あおい","はると","ゆい","そうた"];
+  const ids = names.map((n) => game.addPlayer(state, rules, companies, { name: n }).player.id);
+  game.start(state, rules);
 
   const plays = [
     { cacao: 'market', sugar: 'market', price: 'high', ad: 'none', give: 'none' },
@@ -47,16 +46,16 @@ function playFullGame(ruleId = 'mvp') {
   ];
 
   for (let r = 1; r <= rules.game.rounds; r++) {
-    ids.forEach((id, i) => room.submit(id, plays[i % plays.length]));
-    room.next();
+    ids.forEach((id, i) => game.submit(state, rules, id, plays[i % plays.length]));
+    game.next(state, rules);
   }
-  return { rules, room, ids };
+  return { rules, state, ids };
 }
 
-const { rules, room, ids } = playFullGame();
+const { rules, state, ids } = playFullGame();
 const myId = ids[1];
-const finalState = room.snapshot({ role: 'player', playerId: myId });
-const teacherState = room.snapshot({ role: 'teacher' });
+const finalState = game.snapshot(state, rules, { role: 'player', playerId: myId });
+const teacherState = game.snapshot(state, rules, { role: 'teacher' });
 
 test('準備: ゲームが最終画面まで進んでいる', () => {
   assert.equal(finalState.phase, 'final');
@@ -178,8 +177,8 @@ test('イベント中は原料費の上昇が見積もりに反映される', ()
 });
 
 test('小学校版（項目が少ないルール）でも同じ部品で描ける', () => {
-  const { rules: elRules, room: elRoom, ids: elIds } = playFullGame('elementary');
-  const st = elRoom.snapshot({ role: 'player', playerId: elIds[0] });
+  const { rules: elRules, state: elState, ids: elIds } = playFullGame('elementary');
+  const st = game.snapshot(elState, elRules, { role: 'player', playerId: elIds[0] });
   assert.equal(st.rounds.length, 3);
   assert.doesNotThrow(() => {
     roundResultTable(st, elRules, st.rounds[0], { myId: elIds[0] });

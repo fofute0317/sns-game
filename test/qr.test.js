@@ -5,7 +5,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeQr, qrSvg, formatInfoBits, versionInfoBits } from '../public/js/qr.js';
+import { makeQr, qrSvg, formatInfoBits, versionInfoBits } from '../client/qr.js';
 
 /* 規格 (ISO/IEC 18004) の付表にある、誤り訂正レベルM の形式情報 */
 const FORMAT_M = [

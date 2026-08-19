@@ -15,7 +15,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { loadRuleset, CONFIG_DIR, validateRules } from '../server/rules.js';
+import { loadRuleset, CONFIG_DIR, validateRules } from '../.test-build/lib/rules.js';
 import { buildArchetypes, runSimulation, balanceScore } from './sim-core.js';
 
 const args = process.argv.slice(2);

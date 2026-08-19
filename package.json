@@ -1,20 +1,33 @@
 {
   "name": "fairtrade-challenge",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "フェアトレード・チャレンジ ～チョコレートの旅～ / 中高生向け 複数人対戦型フェアトレード学習ゲーム (MVP)",
+  "description": "フェアトレード・チャレンジ ～チョコレートの旅～ / 中高生向け 複数人対戦型フェアトレード学習ゲーム (Vercel + Supabase)",
   "engines": {
     "node": ">=20.0.0"
   },
   "scripts": {
-    "start": "node server/index.js",
-    "dev": "node --watch server/index.js",
-    "test": "node --test",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.js",
     "simulate": "node tools/simulate.js",
-    "balance": "node tools/simulate.js --games 2000 --report"
+    "balance": "node tools/simulate.js --games 2000 --report",
+    "pretest": "node scripts/build-tests.mjs"
   },
-  "dependencies": {},
-  "devDependencies": {},
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "next": "^15.0.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.6.3"
+  },
   "license": "UNLICENSED"
 }

@@ -6,7 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { loadRuleset } from '../server/rules.js';
+import { loadRuleset } from '../.test-build/lib/rules.js';
 import {
   planEvents,
   resolveRound,
@@ -19,7 +19,7 @@ import {
   applyResult,
   activeDecisions,
   buildInsights,
-} from '../shared/engine.js';
+} from '../.test-build/lib/engine.js';
 
 const rules = loadRuleset('mvp');
 const D = (over = {}) => ({ cacao: 'market', sugar: 'market', price: 'mid', ad: 'none', give: 'none', ...over });
