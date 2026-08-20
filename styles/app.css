@@ -1235,7 +1235,38 @@ body.screen-setup main > .wrap {
 .setup-card .setup-pair + .field,
 .setup-card .field + .setup-pair { margin-top: 18px; }
 
-.setup-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+/* 「定員」と「1ラウンドの制限時間」の横並び。
+ *
+ * 幅の配分:
+ *   選ぶ内容の長さがまるで違います（「6人」は2文字、「なし（先生が締め切る）」は11文字）。
+ *   1fr 1fr で等分すると、左は間延びし、右は文字が枠すれすれになります。
+ *   内容量に近い比率にして、どちらも自然に収まるようにします。
+ *
+ * 高さのそろえ方:
+ *   .field を縦の flex にして、入力欄を下端に寄せます。
+ *   こうすると、狭い画面でどちらかのラベルが2行に折り返しても、
+ *   ラベルは上端・入力欄は下端でそろい、段差ができません。
+ *   （subgrid でも同じことができますが、学校の端末には新しすぎるため使いません）
+ */
+.setup-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 10fr);
+  gap: 16px;
+}
+
+.setup-pair > .field {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 0; /* select の既定幅で列が広がらないようにする */
+}
+
+/* 縦積み用の余白（.field + .field）を、横並びの中では打ち消す。
+ *
+ * これが残っていると、隣り合う兄弟なので2列目だけに margin-top が付き、
+ * 「制限時間」側がラベルごと 18px 下がって段差になります（実際に起きていた不具合）。
+ * さらに 560px 以下で1列に折り返したときは、gap と二重になって余白が倍になります。 */
+.setup-card .setup-pair > .field + .field { margin-top: 0; }
 
 .setup-card label {
   display: flex;
