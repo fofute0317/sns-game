@@ -111,22 +111,19 @@ test('ブラウザ側の Supabase 設定が空でも、ルーム作成は成功�
       const errors = seen.filter((e) => e.type === 'error');
       const welcomes = seen.filter((e) => e.type === 'welcome');
 
-      // ① 通信は成功しているので「電波を確認して」と案内してはいけない
-      assert.deepEqual(
-        errors.filter((e) => e.payload.code === 'network').map((e) => e.payload.message),
-        [],
-        '通信は成功しているのに、電波のせいだと案内してしまっている'
-      );
-
-      // ② ルームは作れているのだから、welcome を出して番号を見せなければならない
+      // ① ルームは作れているのだから、welcome を出して番号を見せなければならない
       assert.equal(welcomes.length, 1, 'ルームは作れているのに welcome が出ていない');
       assert.equal(welcomes[0].payload.state.code, '123456');
       assert.equal(welcomes[0].payload.token, 'teacher-token');
 
-      // ③ 代わりに「リアルタイム更新だけが使えない」ことを伝える
-      const notice = errors.find((e) => e.payload.code === 'realtimeUnavailable');
-      assert.ok(notice, '劣化していることが利用者に伝わらない');
-      assert.match(notice.payload.message, /自動更新/);
+      // ② 画面には何も警告を出さない（授業の邪魔をしない）。
+      //    更新が数秒遅れるだけで操作は妨げられないため、
+      //    気づく必要がある開発・保守向けに console.warn だけを残す方針。
+      assert.deepEqual(
+        errors.map((e) => e.payload.code),
+        [],
+        '操作できているのに画面へ警告を出してしまっている'
+      );
     } finally {
       net.disconnect();
     }

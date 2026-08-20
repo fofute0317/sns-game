@@ -76,7 +76,6 @@ export class Net {
   private channel: RealtimeChannel | null = null;
   private subscribedCode: string | null = null;
   private realtimeOk = false;
-  private noticedRealtime = false;
   private pollInterval = 0;
   private myPlayerId: string | null = null;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -232,22 +231,14 @@ export class Net {
       );
       // HTTP は生きているので「オンライン」のまま
       this.setConnected(true);
-      this.noticeRealtimeUnavailable();
+      // ここで画面に警告を出さないのは意図的です。
+      // 生徒・先生から見ると更新が数秒遅れるだけで、操作は何ひとつ妨げられません。
+      // 授業中のプロジェクタに赤い警告を出す不利益のほうが大きいため、
+      // 気づく必要がある人（開発・保守）に向けて上の console.warn だけを残します。
     } finally {
       // Realtime の成否にかかわらず、保険のポーリングは必ず動かす
       this.startPolling();
     }
-  }
-
-  /** 劣化していることを1度だけ知らせる（毎回出すと授業中に邪魔になる） */
-  private noticeRealtimeUnavailable(): void {
-    if (this.noticedRealtime) return;
-    this.noticedRealtime = true;
-    this.emit('error', {
-      t: 'error',
-      code: 'realtimeUnavailable',
-      message: 'リアルタイム更新に接続できませんでした。画面は数秒ごとに自動更新されます。',
-    });
   }
 
   /** 状態の再取得を定期実行する（Realtime が動いていても保険として併走） */
