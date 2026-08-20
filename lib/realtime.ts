@@ -51,8 +51,11 @@ const ALL_EVENTS = Object.keys(EVENTS);
 /** 合図が連続で来たときに、状態の取得を1回にまとめる待ち時間 */
 const COALESCE_MS = 60;
 
-/** Realtime が切れているときの保険。ゆっくり取りに行く。 */
+/** Realtime が動いているときの保険。ゆっくり取りに行く。 */
 const POLL_MS = 4000;
+
+/** Realtime が張れなかったときは、これだけが更新手段になるので少し短くする。 */
+const FALLBACK_POLL_MS = 2000;
 
 interface Session {
   code: string;
@@ -72,6 +75,9 @@ export class Net {
   private supabase: SupabaseClient | null = null;
   private channel: RealtimeChannel | null = null;
   private subscribedCode: string | null = null;
+  private realtimeOk = false;
+  private noticedRealtime = false;
+  private pollInterval = 0;
   private myPlayerId: string | null = null;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -189,6 +195,7 @@ export class Net {
     }
     this.channel = null;
     this.subscribedCode = null;
+    this.pollInterval = 0;
   }
 
   private setConnected(next: boolean): void {
@@ -199,6 +206,65 @@ export class Net {
 
   /* ---------------- Realtime 購読 ---------------- */
 
+  /**
+   * ルームの変化を追いはじめる。
+   *
+   * ★ Realtime が張れなくても、授業は続けられなければなりません。
+   *   状態は HTTP（/api/rooms/state）だけでも取得できるので、
+   *   購読の失敗は「更新が数秒遅くなる」だけの劣化であって、致命的ではありません。
+   *
+   *   実際に張れない原因はいろいろあります。
+   *     - NEXT_PUBLIC_SUPABASE_* がビルド時に未設定（Vercel でよくある）
+   *     - 学校のネットワークが WebSocket を遮断している
+   *     - Supabase プロジェクトが一時停止している
+   *   どれも「参加できない」わけではないので、必ず再取得に切り替えて続行します。
+   */
+  private async startWatching(code: string): Promise<void> {
+    try {
+      await this.subscribe(code);
+      this.realtimeOk = true;
+    } catch (err) {
+      this.subscribedCode = null; // あとで張り直せるようにしておく
+      this.realtimeOk = false;
+      console.warn(
+        '[net] Realtime に接続できませんでした。数秒ごとの再取得で動作します:',
+        (err as Error).message
+      );
+      // HTTP は生きているので「オンライン」のまま
+      this.setConnected(true);
+      this.noticeRealtimeUnavailable();
+    } finally {
+      // Realtime の成否にかかわらず、保険のポーリングは必ず動かす
+      this.startPolling();
+    }
+  }
+
+  /** 劣化していることを1度だけ知らせる（毎回出すと授業中に邪魔になる） */
+  private noticeRealtimeUnavailable(): void {
+    if (this.noticedRealtime) return;
+    this.noticedRealtime = true;
+    this.emit('error', {
+      t: 'error',
+      code: 'realtimeUnavailable',
+      message: 'リアルタイム更新に接続できませんでした。画面は数秒ごとに自動更新されます。',
+    });
+  }
+
+  /** 状態の再取得を定期実行する（Realtime が動いていても保険として併走） */
+  private startPolling(): void {
+    if (this.closedManually) return;
+    const interval = this.realtimeOk ? POLL_MS : FALLBACK_POLL_MS;
+    if (this.pollTimer && this.pollInterval === interval) return;
+    if (this.pollTimer) clearInterval(this.pollTimer);
+    this.pollInterval = interval;
+    this.pollTimer = setInterval(() => {
+      if (!this.closedManually && this.session) void this.refreshState();
+    }, interval);
+    // Node（テスト・tools）から使われたとき、この繰り返しタイマーだけで
+    // プロセスが終了できなくなるのを防ぐ。ブラウザに unref は無いので任意呼び出し。
+    (this.pollTimer as unknown as { unref?: () => void })?.unref?.();
+  }
+
   private async subscribe(code: string): Promise<void> {
     if (this.closedManually) return;
     if (this.channel) {
@@ -207,7 +273,6 @@ export class Net {
       if (this.subscribedCode === code) return;
       this.teardown();
     }
-    this.subscribedCode = code;
 
     const { supabaseBrowser } = await import('./supabase');
     this.supabase = supabaseBrowser();
@@ -233,13 +298,8 @@ export class Net {
     });
 
     this.channel = channel;
-
-    // Realtime が届かない環境（学校の厳しいプロキシなど）でも授業が止まらないよう、
-    // ゆっくりしたポーリングを常に併走させておく。
-    if (this.pollTimer) clearInterval(this.pollTimer);
-    this.pollTimer = setInterval(() => {
-      if (!this.closedManually && this.session) void this.refreshState();
-    }, POLL_MS);
+    this.subscribedCode = code;
+    // ポーリングは startWatching() が必ず張ります（購読に失敗しても動くように）
   }
 
   private onRealtime(type: string, payload: Record<string, any> = {}): void {
@@ -395,24 +455,53 @@ export class Net {
 
   /* ---------------- HTTP ---------------- */
 
+  /**
+   * ★ 通信の失敗と、応答を受け取ったあとの失敗を、必ず分けて扱います。
+   *
+   *   以前はここを1つの try で包んでいたため、
+   *   「サーバは成功を返したのに、ブラウザ側の処理で例外が出た」場合でも
+   *   『通信できませんでした。電波の状態を確認して…』と表示していました。
+   *
+   *   これは案内として真逆です。実際に起きたのは
+   *   「Vercel で NEXT_PUBLIC_SUPABASE_* をビルド時に入れ忘れ、
+   *     ブラウザ側の Supabase 設定だけが空だった」というケースで、
+   *   電波をいくら確認しても直りません。
+   *   （再現テストは test/realtime.test.js にあります）
+   */
   private async request(
     path: string,
     body: Record<string, unknown>,
     kind: 'create' | 'join' | 'resume' | 'action' | 'leave' | 'tick' | 'refresh'
   ): Promise<void> {
+    let res: Response;
+    let data: any;
+
+    // --- ここだけが「本当の通信エラー」の範囲 ---
     try {
-      const res = await fetch(path, {
+      res = await fetch(path, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
         cache: 'no-store',
       });
-      const data = await res.json().catch(() => ({}));
+      data = await res.json().catch(() => ({}));
+    } catch {
+      this.setConnected(false);
+      if (kind === 'refresh' || kind === 'tick') return;
+      this.emit('error', {
+        t: 'error',
+        code: 'network',
+        message: '通信できませんでした。電波の状態を確認して、もう一度お試しください。',
+      });
+      return;
+    }
 
-      if (!res.ok) return this.handleError(data, kind);
+    if (!res.ok) return this.handleError(data, kind);
 
-      this.setConnected(true);
+    this.setConnected(true);
 
+    // --- ここから先はブラウザ内の処理。落ちても通信の問題ではない ---
+    try {
       if (kind === 'create' || kind === 'join' || kind === 'resume') {
         await this.welcome(data);
         return;
@@ -426,12 +515,11 @@ export class Net {
       // 操作系は、返ってきた自分用スナップショットをそのまま反映する
       if (data.state) this.applyState(data.state);
     } catch (err) {
-      this.setConnected(false);
-      if (kind === 'refresh' || kind === 'tick') return;
+      console.error('[net] 応答の処理に失敗しました', err);
       this.emit('error', {
         t: 'error',
-        code: 'network',
-        message: '通信できませんでした。電波の状態を確認して、もう一度お試しください。',
+        code: 'client',
+        message: '画面の更新に失敗しました。ページを再読み込みしてください。',
       });
     }
   }
@@ -447,7 +535,7 @@ export class Net {
       playerId: data.playerId ?? null,
     });
 
-    await this.subscribe(data.state.code);
+    await this.startWatching(data.state.code);
 
     this.emit('welcome', {
       t: 'welcome',
