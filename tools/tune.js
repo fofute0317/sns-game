@@ -15,7 +15,12 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { loadRuleset, CONFIG_DIR, validateRules } from '../.test-build/lib/rules.js';
+import { fileURLToPath } from 'node:url';
+import { loadRuleset, validateRules } from '../.test-build/lib/rules.js';
+
+// 旧 server/rules.js は CONFIG_DIR を公開していましたが、
+// サーバレス化で config を fs で読まなくなったため、ここで組み立てます。
+const CONFIG_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'config');
 import { buildArchetypes, runSimulation, balanceScore } from './sim-core.js';
 
 const args = process.argv.slice(2);

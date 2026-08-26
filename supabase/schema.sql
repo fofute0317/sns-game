@@ -67,11 +67,17 @@ create table if not exists public.players (
   society_points  integer     not null default 0,
   submitted       boolean     not null default false,
   connected       boolean     not null default false,
+  -- 生徒が調べて入力した調達情報（FLO認証生産者名・生産者情報・プレミアムの使途・原料価格）。
+  -- 上位チームの回答をそのまま実際の仕入れ計画に使うため、SQLで引けるように保持します。
+  research        jsonb,
   joined_at       timestamptz not null default now(),
   updated_at      timestamptz not null default now(),
 
   unique (room_id, player_id)
 );
+
+-- すでに players テーブルを作成済みの環境向け（あとから列を足す）
+alter table public.players add column if not exists research jsonb;
 
 create index if not exists players_room_id_idx on public.players (room_id);
 create index if not exists players_token_idx   on public.players (token);

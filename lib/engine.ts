@@ -23,6 +23,10 @@ import type {
   Standings,
   StandingRow,
   Insight,
+  ResearchAnswers,
+  ResearchItemScore,
+  ResearchScore,
+  ResearchField,
 } from './types';
 
 /* ------------------------------------------------------------------ *
@@ -357,6 +361,90 @@ export function resolveRound({
 }
 
 /* ------------------------------------------------------------------ *
+ * リサーチ（調べて入力する調達情報）
+ *
+ * 発注者の要望による加点項目です。
+ *   ① フェアトレード認証生産者名が明確か      → あれば +10%
+ *   ② どれだけの生産者情報を取得したか        → あれば +10%
+ *   ③ フェアトレードプレミアムの事業がわかるか → あれば +10%
+ *   ④ フェアトレードカカオ豆の値段            → 自分で探す（加点なし・記録のみ）
+ *   ⑤ フェアトレード砂糖の値段                → 自分で探す（加点なし・記録のみ）
+ *
+ * ④⑤ に加点を付けないのは、発注者の指定が①〜③にだけ「あれば10％プラス」と
+ * 書かれているためです。④⑤ は実際の仕入れ計画にそのまま使う情報なので、
+ * 採点はせずCSVに書き出します（上位チームの回答が本物の発注につながる）。
+ *
+ * 「明確か」の判定は、文字数のしきい値（rules.scoring.research.minChars）で行います。
+ * 内容の正しさは先生が最終結果画面とCSVで確認する前提です。
+ * ------------------------------------------------------------------ */
+
+export const RESEARCH_KEYS = [
+  'producerName',
+  'producerInfo',
+  'premiumUse',
+  'cacaoPrice',
+  'sugarPrice',
+] as const;
+
+/** 空のリサーチ回答 */
+export function emptyResearch(): ResearchAnswers {
+  return { producerName: '', producerInfo: '', premiumUse: '', cacaoPrice: '', sugarPrice: '' };
+}
+
+/** ルールで定義された設問（画面はこれを見てフォームを組み立てる） */
+export function researchFields(rules: Ruleset): ResearchField[] {
+  return (rules.scoring.research?.items ?? []) as ResearchField[];
+}
+
+/** 入力を必ず正しい形に整える（未知のキーは捨て、長すぎる入力は切り詰める） */
+export function sanitizeResearch(input: unknown, maxLen = 400): ResearchAnswers {
+  const src = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+  const out = emptyResearch();
+  for (const key of RESEARCH_KEYS) {
+    out[key] = String(src[key] ?? '').trim().slice(0, maxLen);
+  }
+  return out;
+}
+
+/** 1項目が「明確に書けている」とみなせるか */
+function isFilled(value: string, minChars: number): boolean {
+  return value.trim().length >= minChars;
+}
+
+/**
+ * リサーチを採点する。
+ * 加点対象（bonus: true）の項目を満たすごとに、総合得点へ +bonusPerItem。
+ */
+export function scoreResearch(rules: Ruleset, research: ResearchAnswers | undefined): ResearchScore {
+  const cfg = rules.scoring.research;
+  const fields = researchFields(rules);
+  const minChars = cfg?.minChars ?? 4;
+  const per = cfg?.bonusPerItem ?? 0.1;
+  const answers = research ?? emptyResearch();
+
+  const items: ResearchItemScore[] = fields.map((f) => {
+    const value = answers[f.key] ?? '';
+    return {
+      key: f.key,
+      label: f.label,
+      value,
+      bonus: !!f.bonus,
+      filled: isFilled(value, minChars),
+    };
+  });
+
+  const filledBonusCount = items.filter((i) => i.bonus && i.filled).length;
+
+  return {
+    items,
+    filledBonusCount,
+    multiplier: Math.round((1 + per * filledBonusCount) * 1000) / 1000,
+    filledCount: items.filter((i) => i.filled).length,
+    totalCount: items.length,
+  };
+}
+
+/* ------------------------------------------------------------------ *
  * 集計・ランキング
  * ------------------------------------------------------------------ */
 
@@ -410,7 +498,13 @@ function rankDesc<T extends Record<string, any>>(rows: T[], key: string): T[] {
  */
 export function computeStandings(
   rules: Ruleset,
-  players: Array<{ id: string; name: string; company: string; score: PlayerScore }>
+  players: Array<{
+    id: string;
+    name: string;
+    company: string;
+    score: PlayerScore;
+    research?: ResearchAnswers;
+  }>
 ): Standings {
   const w = rules.scoring.weights;
   const mode = rules.scoring.normalization;
@@ -429,6 +523,13 @@ export function computeStandings(
       producer: Math.round(np[i] * w.producer * 10) / 10,
       society: Math.round(ns[i] * w.society * 10) / 10,
     };
+    const baseTotal = Math.round((parts.profit + parts.producer + parts.society) * 10) / 10;
+
+    // リサーチ加点は「素点にかける倍率」。
+    // 加算ではなく倍率にしているのは、経営がうまくいった会社ほど
+    // 調べた成果が効く形にして、リサーチだけで逆転しないようにするためです。
+    const research = scoreResearch(rules, p.research);
+
     return {
       id: p.id,
       name: p.name,
@@ -442,7 +543,12 @@ export function computeStandings(
         society: Math.round(ns[i] * 10) / 10,
       },
       parts,
-      total: Math.round((parts.profit + parts.producer + parts.society) * 10) / 10,
+      baseTotal,
+      // 回答そのものも載せる。先生画面とCSVがここから実際の仕入れ計画を作るため。
+      research: p.research ?? emptyResearch(),
+      researchMultiplier: research.multiplier,
+      researchCount: research.filledBonusCount,
+      total: Math.round(baseTotal * research.multiplier * 10) / 10,
     };
   });
 

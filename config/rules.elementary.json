@@ -6,7 +6,7 @@
   "tagline": "あなたはチョコレート会社の社長さんです。3年間、どんな会社にしますか？",
   "game": {
     "rounds": 3,
-    "startingFunds": 10000000
+    "startingFunds": 3000000
   },
   "decisions": [
     {

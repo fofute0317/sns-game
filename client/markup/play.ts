@@ -156,6 +156,18 @@ export const PLAY_MARKUP = `<header class="appbar">
             <ol id="howto" class="howto-list"></ol>
           </div>
 
+          <!-- リサーチ（発注者の指定による加点項目）。
+               ここで入力した内容は、上位チームの回答がそのまま
+               実際のフェアトレード・チョコレートの仕入れ計画に使われます。 -->
+          <div class="lobby-block">
+            <h3 class="block-title">
+              <svg class="ic block-ic" aria-hidden="true"><use href="#i-book"></use></svg>
+              リサーチ：生産者と原料を調べる
+              <span class="block-sub" id="researchProgress"></span>
+            </h3>
+            <div id="researchBox" class="research"></div>
+          </div>
+
           <!-- ゲームを始めるのは先生です。生徒側は状態表示にしています。 -->
           <div class="lobby-wait" id="lobbyWait" role="status">
             <svg class="ic" aria-hidden="true"><use href="#i-play"></use></svg>
@@ -194,6 +206,18 @@ export const PLAY_MARKUP = `<header class="appbar">
           </div>
           <div id="decGroups"></div>
         </div>
+        <!-- 決定画面からもリサーチを直せる。締め切りに追われて
+             書きかけのまま終わらないよう、折りたたんで置いておく。 -->
+        <details class="panel research-fold" id="researchFold">
+          <summary>
+            <span class="rf-title">
+              <svg class="ic" aria-hidden="true"><use href="#i-book"></use></svg>
+              リサーチを書く・直す
+            </span>
+            <span class="rf-state" id="researchProgressDec"></span>
+          </summary>
+          <div id="researchBoxDec" class="research"></div>
+        </details>
         <div id="decMargin"></div>
         <div id="decSubmit" class="panel" style="position:sticky;bottom:12px;z-index:20"></div>
         <div class="panel">

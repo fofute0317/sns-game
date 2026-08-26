@@ -53,8 +53,10 @@ test('売上・原料費・利益の関係が式どおりになる', () => {
   const r = one(D({ price: 'high', ad: 'small', give: 'mid' }));
   assert.equal(r.revenue, Math.round(r.unitPrice * r.quantity));
   assert.equal(r.profit, r.revenue - r.materialCost - r.adCost - r.giveCost);
-  assert.equal(r.adCost, 500_000);
-  assert.equal(r.giveCost, 300_000);
+  const costOf = (key, id) =>
+    rules.decisions.find((d) => d.key === key).options.find((o) => o.id === id).cost;
+  assert.equal(r.adCost, costOf('ad', 'small'));
+  assert.equal(r.giveCost, costOf('give', 'mid'));
 });
 
 test('価格を上げると販売数は減り、下げると増える', () => {
@@ -91,8 +93,9 @@ test('カカオと砂糖は別々に選べる（点数も別々に積まれる�
 test('追加還元は利益から引かれ、貢献点になる', () => {
   const none = one(D({ give: 'none' }));
   const high = one(D({ give: 'high' }));
-  assert.equal(high.giveCost, 600_000);
-  assert.equal(high.profit, none.profit - 600_000);
+  const giveHigh = rules.decisions.find((d) => d.key === 'give').options.find((o) => o.id === 'high').cost;
+  assert.equal(high.giveCost, giveHigh);
+  assert.equal(high.profit, none.profit - giveHigh);
   assert.ok(high.producerGain > none.producerGain);
 });
 
