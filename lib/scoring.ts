@@ -40,6 +40,7 @@ export function standingsOf(state: RoomState, rules: Ruleset): Standings | null 
       name: p.name,
       company: p.company,
       score: p.score,
+      research: p.research,
     }))
   );
 }
@@ -69,5 +70,6 @@ export function scoreProjection(state: RoomState) {
     society_points: Math.round(p.score.society),
     submitted: p.submitted,
     connected: p.connected,
+    research: p.research ?? null,
   }));
 }

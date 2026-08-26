@@ -27,7 +27,8 @@ const EXPECTED_IDS = {
   play:
     'chipCompany chipRoom chipRound codeInput conn decEvent decGroups decHistory decMargin decStatus decSubmit ' +
     'decTitle finalBody howto joinBtn joinError joinForm lobbyCode lobbyCount lobbyMembers lobbyPlayers lobbyWait ' +
-    'myCard nameInput resAll resHead resLearn resMine resTitle resWait resumeBox resumeBtn roomSettings rosterList',
+    'myCard nameInput resAll resHead resLearn resMine resTitle resWait resumeBox resumeBtn roomSettings rosterList ' +
+    'researchBox researchBoxDec researchFold researchProgress researchProgressDec',
 };
 
 const idsIn = (markup) => new Set([...markup.matchAll(/id="([^"]+)"/g)].map((m) => m[1]));

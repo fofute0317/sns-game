@@ -36,12 +36,17 @@ import {
   isDecisionComplete,
   defaultDecision,
   activeDecisions,
+  emptyResearch,
+  sanitizeResearch,
+  scoreResearch,
+  researchFields,
 } from './engine';
 import { standingsOf, insightsOf } from './scoring';
 import { decideForBot, botThinkDelay } from './bots';
 import { rngFor, token as makeToken, roomCode as makeRoomCode } from './rng';
 import type { CompaniesConfig } from './rules';
 import type {
+  ResearchAnswers,
   RoomState,
   RoomPlayer,
   RoomOptions,
@@ -204,6 +209,7 @@ export function addPlayer(
     draft: defaultDecision(rules),
     submitted: false,
     submittedDecision: null,
+    research: emptyResearch(),
   };
   s.players[id] = player;
   s.order.push(id);
@@ -218,6 +224,28 @@ export function removePlayer(s: RoomState, rules: Ruleset, playerId: string): Ro
   touch(s);
   maybeResolve(s, rules);
   return s;
+}
+
+/**
+ * リサーチ（調べた調達情報）を保存する。
+ *
+ * ラウンドごとではなく「1ゲームに1つ」です。生産者や価格は年ごとに変わるものではなく、
+ * 上位チームの回答をそのまま実際の仕入れ計画に使うための情報だからです。
+ * 最終結果が出るまでは、いつでも書き直せます（調べながら埋めていく想定）。
+ */
+export function setResearch(
+  s: RoomState,
+  playerId: string,
+  patch: Partial<ResearchAnswers>
+): { ok: boolean; error?: string } {
+  const p = s.players[playerId];
+  if (!p) return { ok: false, error: 'プレイヤーが見つかりません。' };
+  if (s.closed) return { ok: false, error: 'このルームは終了しています。' };
+
+  // 部分更新（1項目ずつ保存されるため、既存の回答と混ぜてから整える）
+  p.research = sanitizeResearch({ ...(p.research ?? emptyResearch()), ...(patch ?? {}) });
+  touch(s);
+  return { ok: true };
 }
 
 export function setConnected(s: RoomState, playerId: string, connected: boolean): RoomState {
@@ -513,6 +541,7 @@ export function snapshot(s: RoomState, rules: Ruleset, viewer: Viewer = { role: 
       funds: p.score.funds,
       producer: p.score.producer,
       society: p.score.society,
+      researchCount: scoreResearch(rules, p.research).filledBonusCount,
     })),
     submittedCount: submittedCount(s),
     playerCount: playerCount(s),
@@ -524,6 +553,7 @@ export function snapshot(s: RoomState, rules: Ruleset, viewer: Viewer = { role: 
     })),
     standings,
     insights: insightsOf(s, rules, standings),
+    researchFields: researchFields(rules),
     updatedAt: s.updatedAt,
   };
 
@@ -540,6 +570,8 @@ export function snapshot(s: RoomState, rules: Ruleset, viewer: Viewer = { role: 
         draft: me.draft,
         submitted: me.submitted,
         requiredKeys: activeDecisions(rules).map((d) => d.key),
+        research: me.research ?? emptyResearch(),
+        researchScore: scoreResearch(rules, me.research),
       };
     }
   }

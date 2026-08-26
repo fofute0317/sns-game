@@ -187,5 +187,7 @@ async function main() {
 
 main().catch((err) => {
   console.error(`\n❌ ${err.message}\n`);
-  process.exit(1);
+  // process.exit() だと進行中の fetch が残ったまま落ちるため、
+  // Windows で libuv のアサーションが出ることがある。終了コードだけ立てる。
+  process.exitCode = 1;
 });

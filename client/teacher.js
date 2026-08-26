@@ -400,6 +400,8 @@ function renderFinal() {
         ),
       ])
     );
+    body.appendChild(researchPanel());
+
     body.appendChild(
       el('div', { class: 'panel' }, [
         el('div', { class: 'section-title' }, [el('h2', {}, ['全ラウンドの記録'])]),
@@ -416,6 +418,56 @@ function renderFinal() {
       ])
     );
   }
+}
+
+/**
+ * リサーチ結果の一覧。
+ *
+ * ここが今回の教材のいちばん大事な出口です。
+ * 上位チームがここに書いた生産者名・価格が、そのまま実際の
+ * フェアトレード・チョコレートの発注に使われます。
+ * そのため「読める形で全部出す」ことを優先し、省略しません。
+ */
+function researchPanel() {
+  const fields = state.researchFields || [];
+  if (!fields.length) return el('div');
+
+  const byId = new Map(state.players.map((p) => [p.id, p]));
+  const ranked = state.standings?.total ?? [];
+
+  const cards = ranked.map((row) => {
+    const p = byId.get(row.id);
+    const answers = row.research || {};
+    return el('div', { class: 'panel panel-soft research-card' }, [
+      el('div', { class: 'row' }, [
+        el('h3', { style: { margin: 0 } }, [`${row.rank}位　${row.company}（${row.name}）`]),
+        el('span', { class: 'right small' }, [
+          row.researchCount > 0
+            ? `リサーチ +${Math.round((row.researchMultiplier - 1) * 100)}%`
+            : 'リサーチ加点なし',
+        ]),
+      ]),
+      el(
+        'dl',
+        { class: 'research-dl' },
+        fields.flatMap((f) => {
+          const v = String(answers[f.key] ?? '').trim();
+          return [
+            el('dt', {}, [f.label]),
+            el('dd', { class: v ? '' : 'muted' }, [v || '（未記入）']),
+          ];
+        })
+      ),
+    ]);
+  });
+
+  return el('div', { class: 'panel' }, [
+    el('div', { class: 'section-title' }, [
+      el('h2', {}, ['🔎 リサーチ結果（実際の仕入れ計画に使います）']),
+      el('span', { class: 'sub' }, ['総合順位の高い順']),
+    ]),
+    ...cards,
+  ]);
 }
 
 function rankMini(title, rows, unit, moneyRules = null) {
@@ -477,9 +529,42 @@ function exportCsv() {
   if (s) {
     lines.push([]);
     lines.push(['最終結果']);
-    lines.push(['総合順位', '会社', '名前', '最終資金', '生産者点', '社会点', '総合点']);
+    lines.push([
+      '総合順位',
+      '会社',
+      '名前',
+      '最終資金',
+      '生産者点',
+      '社会点',
+      '素点',
+      'リサーチ加点',
+      '総合点',
+    ]);
     for (const row of s.total) {
-      lines.push([row.rank, row.company, row.name, row.funds, row.producerPoints, row.societyPoints, row.total]);
+      lines.push([
+        row.rank,
+        row.company,
+        row.name,
+        row.funds,
+        row.producerPoints,
+        row.societyPoints,
+        row.baseTotal,
+        `+${Math.round((row.researchMultiplier - 1) * 100)}%`,
+        row.total,
+      ]);
+    }
+
+    // リサーチの回答そのもの。これが実際の発注に使われるので、
+    // 省略せず、順位つきで全文を書き出す。
+    const fields = state.researchFields || [];
+    if (fields.length) {
+      lines.push([]);
+      lines.push(['リサーチ結果（実際の仕入れ計画に使用）']);
+      lines.push(['総合順位', '会社', '名前', ...fields.map((f) => f.label)]);
+      for (const row of s.total) {
+        const answers = row.research || {};
+        lines.push([row.rank, row.company, row.name, ...fields.map((f) => answers[f.key] ?? '')]);
+      }
     }
   }
 

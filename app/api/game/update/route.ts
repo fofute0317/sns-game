@@ -29,6 +29,7 @@ import {
   addPlayer,
   setOptions,
   closeRoom,
+  setResearch,
   snapshot,
   PHASE,
 } from '@/lib/game';
@@ -40,7 +41,7 @@ import type { Viewer } from '@/lib/types';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const PLAYER_ACTIONS = new Set(['draft', 'unsubmit', 'leave']);
+const PLAYER_ACTIONS = new Set(['draft', 'unsubmit', 'leave', 'research']);
 
 export async function POST(req: Request) {
   try {
@@ -67,6 +68,17 @@ export async function POST(req: Request) {
           // 下書きは自分の画面にしか関係しないので、他の人へは流さない。
           // events を空にすると配信されません（lib/store.ts の fanout 参照）。
           return { ok: true, value: { viewer, left: false }, events: [] };
+        }
+        if (action === 'research') {
+          // 調べた調達情報の保存。1項目ずつ届くので、部分更新として扱う。
+          const r = setResearch(state, playerId, body.research || {});
+          if (!r.ok) return { ok: false, error: r.error as string, code: 'researchFailed' };
+          // 先生の画面に「何項目そろったか」を出すため、進捗として全員へ知らせる
+          return {
+            ok: true,
+            value: { viewer, left: false },
+            events: [{ type: 'STATE_CHANGED', payload: { playerId, reason: 'RESEARCH_UPDATED' } }],
+          };
         }
         if (action === 'unsubmit') {
           unsubmit(state, playerId);

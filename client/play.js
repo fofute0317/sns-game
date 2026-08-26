@@ -42,6 +42,18 @@ const optButtons = new Map(); // "group:optId" -> button
 let localDraft = {};
 let countdownTimer = null;
 
+/**
+ * リサーチ（調べて入力する調達情報）。
+ *
+ * 入力のたびに送ると通信が増えるので、打ち終わってから保存します。
+ * 入力中にサーバの状態で上書きされると打っている文字が消えるため、
+ * 「いま編集中の欄」だけは applyState の反映対象から外します。
+ */
+let researchLocal = {};
+let researchSaveTimer = null;
+let researchEditingKey = null;
+let researchBuilt = false;
+
 // テストから接続を止められるように公開しておく（ブラウザ側の動作には影響しません）
 export { net };
 
@@ -173,6 +185,16 @@ function applyState(next) {
   state = next;
   if (state.you) localDraft = { ...state.you.draft };
 
+  // リサーチはサーバが正。ただし入力中の欄だけは上書きしない。
+  if (state.you?.research) {
+    const incoming = state.you.research;
+    const merged = { ...incoming };
+    if (researchEditingKey) merged[researchEditingKey] = researchLocal[researchEditingKey] ?? '';
+    researchLocal = merged;
+  }
+  if (!researchBuilt) buildResearch();
+  paintResearch();
+
   // ヘッダ
   const me = state.you;
   toggleChip('#chipCompany', me ? `${me.icon || ''} ${me.company}` : null);
@@ -199,6 +221,121 @@ function applyState(next) {
       renderFinal();
       showScreen('final');
       break;
+  }
+}
+
+/* ---------------------------------------------------------- リサーチ */
+
+/** 入力欄を1度だけ組み立てる（毎回作り直すと入力中にフォーカスが飛ぶ） */
+function buildResearch() {
+  const fields = state.researchFields || [];
+  if (!fields.length) return;
+
+  const cfg = rules.scoring?.research || {};
+
+  for (const boxId of ['#researchBox', '#researchBoxDec']) {
+    const box = $(boxId);
+    if (!box) continue;
+    clear(box);
+
+    box.appendChild(
+      el('p', { class: 'research-lead' }, [
+        cfg.note || '調べたことを書くと、総合得点が増えます。',
+      ])
+    );
+
+    for (const link of cfg.links || []) {
+      box.appendChild(
+        el('a', { class: 'research-link', href: link.url, target: '_blank', rel: 'noopener noreferrer' }, [
+          link.label + ' ↗',
+        ])
+      );
+    }
+
+    for (const f of fields) {
+      const inputId = `rf_${f.key}_${boxId.replace(/\W/g, '')}`;
+      const input = el('textarea', {
+        id: inputId,
+        class: 'research-input',
+        rows: f.key === 'producerInfo' || f.key === 'premiumUse' ? 3 : 2,
+        placeholder: f.placeholder || '',
+        maxlength: 400,
+        oninput: (ev) => onResearchInput(f.key, ev.target.value),
+        onfocus: () => {
+          researchEditingKey = f.key;
+        },
+        onblur: () => {
+          if (researchEditingKey === f.key) researchEditingKey = null;
+          flushResearch();
+        },
+      });
+
+      box.appendChild(
+        el('div', { class: 'research-field', dataset: { key: f.key } }, [
+          el('label', { class: 'research-label', for: inputId }, [
+            f.label,
+            f.bonus
+              ? el('span', { class: 'research-badge' }, ['+10%'])
+              : el('span', { class: 'research-badge research-badge-note' }, ['記録']),
+          ]),
+          f.hint ? el('p', { class: 'research-hint' }, [f.hint]) : null,
+          input,
+        ])
+      );
+    }
+  }
+  researchBuilt = true;
+}
+
+function onResearchInput(key, value) {
+  researchLocal = { ...researchLocal, [key]: value };
+  paintResearch();
+  clearTimeout(researchSaveTimer);
+  // 打ち終わってからまとめて保存する
+  researchSaveTimer = setTimeout(flushResearch, 700);
+}
+
+function flushResearch() {
+  clearTimeout(researchSaveTimer);
+  if (!state?.you) return;
+  net.send({ t: 'research', research: researchLocal });
+}
+
+/** 入力値と達成状況を画面に反映する */
+function paintResearch() {
+  const fields = state?.researchFields || [];
+  if (!fields.length) return;
+  const minChars = rules?.scoring?.research?.minChars ?? 4;
+
+  let bonusDone = 0;
+  let bonusTotal = 0;
+
+  for (const f of fields) {
+    const value = researchLocal[f.key] ?? '';
+    const filled = String(value).trim().length >= minChars;
+    if (f.bonus) {
+      bonusTotal++;
+      if (filled) bonusDone++;
+    }
+    for (const boxId of ['#researchBox', '#researchBoxDec']) {
+      const box = $(boxId);
+      const wrap = box?.querySelector(`.research-field[data-key="${f.key}"]`);
+      if (!wrap) continue;
+      wrap.classList.toggle('done', filled);
+      const input = wrap.querySelector('.research-input');
+      // 編集中の欄には触れない（カーソル位置が飛ぶため）
+      if (input && researchEditingKey !== f.key && input.value !== value) input.value = value;
+    }
+  }
+
+  const pct = bonusTotal ? Math.round((bonusDone / bonusTotal) * 100) : 0;
+  const text = `${bonusDone} / ${bonusTotal} 項目（総合得点 +${bonusDone * 10}%）`;
+  for (const sel of ['#researchProgress', '#researchProgressDec']) {
+    const node = $(sel);
+    if (node) {
+      node.textContent = text;
+      node.classList.toggle('all-done', pct === 100);
+    }
   }
 }
 

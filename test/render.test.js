@@ -157,7 +157,9 @@ test('利幅の見積もりが描ける（販売数は見せない）', () => {
   const node = marginSummary(rules, decision, null);
   const text = node.allText;
   assert.ok(text.includes('販売価格'));
-  assert.ok(text.includes('1ロットの利益'));
+  // 単位名はルール側（game.quantity.unitLabel）で決まる。
+  // 「ロット」→「バッチ」のように変えてもテストが壊れないよう、ルールから引く。
+  assert.ok(text.includes(`1${rules.game.quantity.unitLabel}の利益`));
   assert.ok(!text.includes('予想販売数'), '答えそのものは見せない');
 });
 
