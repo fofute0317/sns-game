@@ -12,8 +12,49 @@ import { supabaseAdmin } from '@/lib/supabase';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+/**
+ * 環境変数がそろっているかを、値を出さずに報告する。
+ *
+ * 「どれが抜けているか」が分からないと、Vercel の設定画面で
+ * 3つを見比べる作業になります。名前と有無だけを返します（値は絶対に出しません）。
+ */
+function envReport() {
+  const names = [
+    'NEXT_PUBLIC_SUPABASE_URL',
+    'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+    'SUPABASE_SERVICE_ROLE_KEY',
+  ] as const;
+
+  const present: Record<string, boolean> = {};
+  const missing: string[] = [];
+  for (const name of names) {
+    const ok = !!process.env[name];
+    present[name] = ok;
+    if (!ok) missing.push(name);
+  }
+  return { present, missing };
+}
+
 export async function GET() {
   const started = Date.now();
+  const env = envReport();
+
+  // 環境変数が抜けていると、この先の接続確認は必ず失敗します。
+  // 先に「何が抜けているか」を返したほうが早く直せます。
+  if (env.missing.length) {
+    return json(
+      {
+        ok: false,
+        db: 'unchecked',
+        env: env.present,
+        message: `環境変数が設定されていません: ${env.missing.join(', ')}`,
+        hint: 'ローカルは .env.local、公開先は Vercel の Environment Variables に設定し、Vercel では Redeploy してください（NEXT_PUBLIC_ はビルド時に埋め込まれます）。',
+        latencyMs: Date.now() - started,
+      },
+      503
+    );
+  }
+
   try {
     // ★ head: true（HEADリクエスト）は使わない。
     //   テーブルが無いとき PostgREST は本文なしで返すため、エラーを読み取れず、
@@ -32,6 +73,7 @@ export async function GET() {
       ok: true,
       rooms: count ?? 0,
       db: 'connected',
+      env: env.present,
       latencyMs: Date.now() - started,
       node: process.version,
     });
@@ -42,6 +84,7 @@ export async function GET() {
       {
         ok: false,
         db: 'error',
+        env: env.present,
         message,
         hint: missingTable
           ? 'テーブルがまだありません。Supabase の SQL Editor で supabase/schema.sql を実行してください。'
