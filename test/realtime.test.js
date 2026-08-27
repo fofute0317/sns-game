@@ -218,3 +218,94 @@ test('ルームが終了していたら、セッション切れではなく終�
     net.disconnect();
   }
 });
+
+/* ================================================================== 操作の一覧 */
+
+/**
+ * クライアントとサーバが、同じ操作の一覧を見ていることを確かめる。
+ *
+ * 実際に、サーバ側にだけ 'research' を追加してクライアント側の switch に
+ * 足し忘れ、生徒の画面に「この操作はできません: research」と出る不具合が起きました。
+ * 一覧は lib/types.ts に1つだけ置き、両側がそこを読む形にしています。
+ */
+
+const { UPDATE_ACTIONS, PLAYER_UPDATE_ACTIONS, TEACHER_UPDATE_ACTIONS } = await import(
+  '../.test-build/lib/types.js'
+);
+const fsMod = await import('node:fs');
+
+test('生徒・先生の操作が重複なく1つの一覧にまとまっている', () => {
+  const all = [...PLAYER_UPDATE_ACTIONS, ...TEACHER_UPDATE_ACTIONS];
+  assert.deepEqual([...UPDATE_ACTIONS], all);
+  assert.equal(new Set(all).size, all.length, '同じ操作が2回入っている');
+  // 発注者の要望で追加した操作が、ちゃんと生徒側に入っていること
+  assert.ok(PLAYER_UPDATE_ACTIONS.includes('research'));
+});
+
+test('サーバが実装している操作は、すべてクライアントから送れる', () => {
+  const route = fsMod.readFileSync(
+    new URL('../app/api/game/update/route.ts', import.meta.url),
+    'utf8'
+  );
+
+  // 先生用 switch の case と、生徒用の if (action === '...') を拾う
+  const implemented = new Set([
+    ...[...route.matchAll(/case '([a-zA-Z]+)':/g)].map((m) => m[1]),
+    ...[...route.matchAll(/action === '([a-zA-Z]+)'/g)].map((m) => m[1]),
+  ]);
+  // leave は if/else の最後（明示的な比較が無い）なので足しておく
+  implemented.add('leave');
+
+  const missing = [...implemented].filter((a) => !UPDATE_ACTIONS.includes(a));
+  assert.deepEqual(
+    missing,
+    [],
+    `サーバにあるのに UPDATE_ACTIONS に無い操作: ${missing.join(', ')}`
+  );
+});
+
+test('一覧にある操作は、クライアントが「できません」と言わずに送信する', async () => {
+  installBrowser();
+  const calls = installFetch();
+
+  const net = new Net('teacher');
+  const seen = collect(net);
+  try {
+    // 参加済みの状態にしておく
+    net.send({ t: 'createRoom', ruleset: 'mvp' });
+    await flush();
+    seen.length = 0;
+
+    for (const action of UPDATE_ACTIONS) {
+      if (action === 'leave') continue; // leave は退出処理なので別扱い
+      net.send({ t: action });
+    }
+    await flush();
+
+    const rejected = seen
+      .filter((e) => e.type === 'error' && e.payload.code === 'badRequest')
+      .map((e) => e.payload.message);
+    assert.deepEqual(rejected, [], `クライアントが送れない操作がある: ${rejected.join(' / ')}`);
+
+    const posted = calls.filter((c) => c.url === '/api/game/update').length;
+    assert.equal(posted, UPDATE_ACTIONS.length - 1, 'すべての操作が /api/game/update に送られる');
+  } finally {
+    net.disconnect();
+  }
+});
+
+test('本当に知らない操作は、これまでどおり拒否する', async () => {
+  installBrowser();
+  installFetch();
+  const net = new Net('teacher');
+  const seen = collect(net);
+  try {
+    net.send({ t: 'nonexistentAction' });
+    await flush();
+    const errors = seen.filter((e) => e.type === 'error');
+    assert.equal(errors.length, 1);
+    assert.equal(errors[0].payload.code, 'badRequest');
+  } finally {
+    net.disconnect();
+  }
+});
