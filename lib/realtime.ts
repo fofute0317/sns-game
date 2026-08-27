@@ -426,22 +426,19 @@ export class Net {
         await this.request('/api/game/update', { ...auth, action: 'leave' }, 'leave');
         return;
 
-      /* ---- そのほかはすべて /api/game/update に集約 ---- */
-      case 'draft':
-      case 'research':
-      case 'unsubmit':
-      case 'forceResolve':
-      case 'next':
-      case 'back':
-      case 'restart':
-      case 'addBot':
-      case 'removePlayer':
-      case 'setOptions':
-      case 'closeRoom':
-        await this.request('/api/game/update', { ...auth, action: t, ...msg }, 'action');
-        return;
-
+      /* ---- そのほかはすべて /api/game/update に集約 ----
+       *
+       * 受け付ける操作は lib/types.ts の UPDATE_ACTIONS が唯一の正です。
+       * ここに case を並べていた時期に、サーバへ 'research' を足して
+       * こちらへ足し忘れ、生徒の画面に
+       * 「この操作はできません: research」と出る不具合が起きました。
+       * 一覧を1か所にすることで、片方だけ直し忘れても追従します。
+       */
       default:
+        if ((UPDATE_ACTIONS as readonly string[]).includes(t)) {
+          await this.request('/api/game/update', { ...auth, action: t, ...msg }, 'action');
+          return;
+        }
         this.emit('error', { t: 'error', code: 'badRequest', message: `この操作はできません: ${t}` });
     }
   }
