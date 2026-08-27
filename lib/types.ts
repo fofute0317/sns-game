@@ -364,3 +364,35 @@ export type GameEventType =
   | 'ROOM_CLOSED'
   | 'PLAYER_KICKED'
   | 'STATE_CHANGED';
+
+/* ------------------------------------------------------------------ 操作の一覧
+ *
+ * /api/game/update が受け付ける操作。
+ *
+ * ★ ここを唯一の正とし、クライアント（lib/realtime.ts）とサーバ
+ *   （app/api/game/update/route.ts）の両方がこの一覧を読みます。
+ *
+ *   以前、サーバ側にだけ 'research' を足してクライアント側の switch に
+ *   足し忘れ、生徒の画面で「この操作はできません: research」と出る不具合が
+ *   起きました。一覧を1か所にすれば、片方だけ直し忘れることがなくなります。
+ * ------------------------------------------------------------------ */
+
+/** 生徒ができる操作 */
+export const PLAYER_UPDATE_ACTIONS = ['draft', 'research', 'unsubmit', 'leave'] as const;
+
+/** 先生だけができる操作 */
+export const TEACHER_UPDATE_ACTIONS = [
+  'forceResolve',
+  'next',
+  'back',
+  'restart',
+  'addBot',
+  'removePlayer',
+  'setOptions',
+  'closeRoom',
+] as const;
+
+/** /api/game/update が受け付けるすべての操作 */
+export const UPDATE_ACTIONS = [...PLAYER_UPDATE_ACTIONS, ...TEACHER_UPDATE_ACTIONS] as const;
+
+export type UpdateAction = (typeof UPDATE_ACTIONS)[number];

@@ -26,6 +26,7 @@
 
 import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
 import type { GameEventType } from './types';
+import { UPDATE_ACTIONS } from './types';
 
 /** ルームコード → Realtime チャンネル名 */
 export function channelFor(code: string): string {
@@ -427,6 +428,7 @@ export class Net {
 
       /* ---- そのほかはすべて /api/game/update に集約 ---- */
       case 'draft':
+      case 'research':
       case 'unsubmit':
       case 'forceResolve':
       case 'next':

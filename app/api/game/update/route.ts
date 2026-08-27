@@ -37,11 +37,12 @@ import { companies } from '@/lib/rules';
 import { STRATEGY_IDS, BOT_ROTATION } from '@/lib/bots';
 import type { EmitEvent } from '@/lib/store';
 import type { Viewer } from '@/lib/types';
+import { PLAYER_UPDATE_ACTIONS } from '@/lib/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const PLAYER_ACTIONS = new Set(['draft', 'unsubmit', 'leave', 'research']);
+const PLAYER_ACTIONS = new Set<string>(PLAYER_UPDATE_ACTIONS);
 
 export async function POST(req: Request) {
   try {
